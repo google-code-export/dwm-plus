@@ -1,4 +1,3 @@
-
 dwm_dir=${HOME}/.dwm
 
 killall conky; conky -c ${dwm_dir}/conkyrc | while read -r; do 
@@ -17,6 +16,3 @@ update-notifier &
 /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 &
 
 xdg-user-dirs-gtk-update &
-
-
-
