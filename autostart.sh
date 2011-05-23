@@ -6,13 +6,21 @@ killall conky; conky -c ${dwm_dir}/conkyrc | while read -r; do
 
 done &
 
-nitrogen --restore &
+#nitrogen --restore &
 
-xfce4-clipman &
+parcellite &
 
-update-notifier &
+#pidgin &
+
+#fcitx &
+
+#xfce4-clipman &
+
+#update-notifier &
 
 #认证代理
-/usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 &
+#/usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 &
 
-xdg-user-dirs-gtk-update &
+#检测文件的改变
+#xdg-user-dirs-gtk-update &
+
