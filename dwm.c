@@ -263,6 +263,8 @@ static void	      tag(const Arg *arg);
 static void	      tagmon(const Arg *arg);
 static int	      textnw(const char *text, unsigned int len);
 static void	      tile(Monitor *);
+static void       grid(Monitor *m);
+static void       bstack(Monitor *m);
 static void	      togglebar(const Arg *arg);
 static void	      togglefloating(const Arg *arg);
 static void	      toggletag(const Arg *arg);
@@ -291,7 +293,9 @@ static void	      view_prev_tag(const Arg *);
 static void	      view_adjacent_tag(const Arg *, int);
 //重启dwm
 static void           restart(const Arg *arg);
+//水平平铺
 static void bstackhoriz(Monitor *m);
+
 void	    movestack(const Arg *arg);
 // 单击窗口标题区域切换窗口
 static void focusonclick(const Arg *arg);
@@ -329,9 +333,9 @@ static void (*handler[LASTEvent]) (XEvent *) = {
 	[ConfigureNotify]		     = configurenotify,
 	[DestroyNotify]			     = destroynotify,
 	[EnterNotify]			     = enternotify,
-	[Expose]			     = expose,
-	[FocusIn]			     = focusin,
-	[KeyPress]			     = keypress,
+	[Expose]			         = expose,
+	[FocusIn]			         = focusin,
+	[KeyPress]			         = keypress,
 	[MappingNotify]			     = mappingnotify,
 	[MapRequest]			     = maprequest,
 	[PropertyNotify]		     = propertynotify,
@@ -351,6 +355,9 @@ Window root;
 #ifdef XFT
 static XftDraw *xftdraw;
 #endif
+
+Bool sel_win = False;
+Bool istitledraw = False;
 
 /* configuration, allows nested code to access above variables */
 #include "config.h"
@@ -1014,9 +1021,12 @@ drawbar(Monitor *m) {
 			drawtext(c->name, col , True);
 			// 绘制分隔线
 			if(c != firstvis)
-                            drawvline(col);
+                  drawvline(col);
+			//单独对绘制正方形进行控制,使小正方形向右边偏离一点点，不压竖线
+			istitledraw = True;
 			drawsquare(c->isfixed, c->isfloating, False, col);
-
+			istitledraw = False;
+			
 			dc.x += dc.w;
 			dc.w = ow - dc.w;
 			for(c = c->next; c && !ISVISIBLE(c); c = c->next);
@@ -1030,8 +1040,14 @@ drawbar(Monitor *m) {
 	if(m == selmon && m->sel && ISVISIBLE(m->sel)) {
 		dc = seldc;
 		col = dc.colors[1]; // 被选中的颜色
+		//调整被选择的窗口的标题，使之对中
+		sel_win = True;
 		drawtext(m->sel->name, col, True);
+		
 		drawsquare(m->sel->isfixed, m->sel->isfloating, True, col);
+		
+		sel_win = False;
+		
 	}
 	
 	XCopyArea(dpy, dc.drawable, m->barwin, dc.gc, 0, 0, m->ww, bh, 0, 0);
@@ -1053,9 +1069,10 @@ drawvline(unsigned long col[ColLast]) {
 	gcv.foreground = col[ColFG];
 	XChangeGC(dpy, dc.gc, GCForeground, &gcv);
 	// XDrawLine(dpy, dc.drawable, dc.gc, dc.x, dc.y, dc.x, dc.y + (dc.font.ascent + dc.font.descent + 2));
-        // 绘制的竖线在中间，与上下有间隔
+    // 绘制的竖线在中间，与上下有间隔
 	XDrawLine(dpy, dc.drawable, dc.gc, dc.x, dc.y + 3 , dc.x, dc.y + bh - 3);
-        // XDrawRectangle(dpy , dc.drawable , dc.gc , dc.x , dc .y + 3 , 3 , bh -6);
+	//XDrawLine(dpy, dc.drawable, dc.gc, dc.x - 1 , dc.y + 3 , dc.x - 1 , dc.y + bh - 3);
+    //XDrawRectangle(dpy , dc.drawable , dc.gc , dc.x - 3 , dc.y + 3 , 2 , bh - 6);
         
         
 	}
@@ -1114,7 +1131,10 @@ drawsquare(Bool filled, Bool empty, Bool invert, unsigned long col[ColLast]) {
 	gcv.foreground = col[invert ? ColBG : ColFG];
 	XChangeGC(dpy, dc.gc, GCForeground, &gcv);
 	x = (dc.font.ascent + dc.font.descent + 2) / 4;
-	r.x = dc.x + 1;
+	if(istitledraw)//绘制标题上面的小正方形
+	  r.x = dc.x + 3;
+	else
+	  r.x = dc.x + 1;  
 	r.y = dc.y + 1;
 	if(filled) {
 		r.width = r.height = x + 1;
@@ -1130,7 +1150,17 @@ void
 drawtext(const char *text, unsigned long col[ColLast], Bool pad) {
 	char buf[256];
 	int i, x, y, h, len, olen;
-	XRectangle r = { dc.x, dc.y, dc.w, dc.h };
+	
+	if(sel_win) //当前窗口被选择
+	{
+		dc.x = dc.x + 3;
+		dc.w = dc.w - 5;
+				
+	}
+		
+	XRectangle r = { dc.x , dc.y, dc.w , dc.h };
+	
+		 
 #ifdef XFT
 	int p;
 	XColor color;
@@ -2314,7 +2344,7 @@ unmapnotify(XEvent *e) {
      {
           systray_del(s);
           systray_update();
-     }	
+	  }	
 }
 
 void
@@ -3055,6 +3085,7 @@ focusonclick(const Arg *arg) {
 			if (x < arg->i && x+w > arg->i) {
 				focus(c);
 				restack(selmon);
+				
 				break;
 			} else
 				// 重新给开始值
@@ -3072,7 +3103,7 @@ focusonclick(const Arg *arg) {
 // 鼠标右键点击窗口标题显示区域关闭该窗口
 void
 closeonclick(const Arg *arg) {
-    int x, w, mw = 0, tw, n = 0, i = 0, extra = 0;
+	   int x, w, mw = 0, tw, n = 0, i = 0, extra = 0;
        Monitor *m = selmon;
        Client *c, *firstvis;
         
@@ -3111,7 +3142,7 @@ closeonclick(const Arg *arg) {
 			if (x < arg->i && x+w > arg->i) {
 				focus(c);
 				restack(selmon);
-                                killclient(0);
+                killclient(0);//关闭被选择的窗口
 				break;
 			} else
 				// 重新给开始值
@@ -3258,5 +3289,60 @@ tpawn(const char *format, ...)
      return pid;
 }
 
+void
+grid(Monitor *m) {
+	unsigned int i, n, cx, cy, cw, ch, aw, ah, cols, rows;
+	Client *c;
 
+	for(n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next))
+		n++;
 
+	/* grid dimensions */
+	for(rows = 0; rows <= n/2; rows++)
+		if(rows*rows >= n)
+			break;
+	cols = (rows && (rows - 1) * rows >= n) ? rows - 1 : rows;
+
+	/* window geoms (cell height/width) */
+	ch = m->wh / (rows ? rows : 1);
+	cw = m->ww / (cols ? cols : 1);
+	for(i = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next)) {
+		cx = m->wx + (i / rows) * cw;
+		cy = m->wy + (i % rows) * ch;
+		/* adjust height/width of last row/column's windows */
+		ah = ((i + 1) % rows == 0) ? m->wh - ch * rows : 0;
+		aw = (i >= rows * (cols - 1)) ? m->ww - cw * cols : 0;
+		resize(c, cx, cy, cw - 2 * c->bw + aw, ch - 2 * c->bw + ah, False);
+		i++;
+	}
+}
+
+void
+bstack(Monitor *m) {
+	int x, y, h, w, mh;
+	unsigned int i, n;
+	Client *c;
+
+	for(n = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), n++);
+	if(n == 0)
+		return;
+	/* master */
+	c = nexttiled(m->clients);
+	mh = m->mfact * m->wh;
+	resize(c, m->wx, m->wy, m->ww - 2 * c->bw, (n == 1 ? m->wh : mh) - 2 * c->bw, False);
+	if(--n == 0)
+		return;
+	/* tile stack */
+	x = m->wx;
+	y = (m->wy + mh > c->y + c->h) ? c->y + c->h + 2 * c->bw : m->wy + mh;
+	w = m->ww / n;
+	h = (m->wy + mh > c->y + c->h) ? m->wy + m->wh - y : m->wh - mh;
+	if(w < bh)
+		w = m->ww;
+	for(i = 0, c = nexttiled(c->next); c; c = nexttiled(c->next), i++) {
+		resize(c, x, y, /* remainder */ ((i + 1 == n)
+		       ? m->wx + m->ww - x - 2 * c->bw : w - 2 * c->bw), h - 2 * c->bw, False);
+		if(w != m->ww)
+			x = c->x + WIDTH(c);
+	}
+}
